@@ -61,7 +61,6 @@ def copy_labels(source, destination):
                 print("Label {label} already exists in repo".format(label=label.name))
 
 
-
 def migrate_issue(orig_issue, destination, dest_milestones, dest_labels):
     """
     Migrates issue to destination depo.
@@ -75,7 +74,7 @@ def migrate_issue(orig_issue, destination, dest_milestones, dest_labels):
                 link=orig_issue.html_url
             )
 
-    body += re.sub(OPERATORS_RE, r'**at user \1**', orig_issue.body)
+    body += re.sub(OPERATORS_RE, r'**\1**', orig_issue.body)
 
     issue_args = {"title": orig_issue.title, "body": body}
 
@@ -105,7 +104,7 @@ def migrate_issue(orig_issue, destination, dest_milestones, dest_labels):
             user=comment.user.login, date=comment.created_at
         )
 
-        comment_body += re.sub(OPERATORS_RE,r'**at user \1**', comment.body)
+        comment_body += re.sub(OPERATORS_RE, r'**\1**', comment.body)
 
         new_comment = new_issue.create_comment(body=comment_body)
         for reaction in comment.get_reactions():
@@ -113,7 +112,6 @@ def migrate_issue(orig_issue, destination, dest_milestones, dest_labels):
     print(">>> Changing issue state to {state}".format(state=orig_issue.state))
 
     new_issue.edit(state=orig_issue.state)
-
 
 
 def migrate_pr(orig_pull, destination, milestones, labels):
@@ -137,7 +135,7 @@ def migrate_pr(orig_pull, destination, milestones, labels):
     if orig_pull.base is not None:
         body += "BASE is: {sha}\n".format(sha=orig_pull.base.sha)
 
-    body += re.sub(OPERATORS_RE, r'**at user \1**', orig_pull.body)
+    body += re.sub(OPERATORS_RE, r'**\1**', orig_pull.body)
 
     pr_args = {
         "title": orig_pull.title,
@@ -155,7 +153,7 @@ def migrate_pr(orig_pull, destination, milestones, labels):
             user=comment.user.login, date=comment.created_at
         )
 
-        comment_body += re.sub(OPERATORS_RE, r'**at user \1**', comment.body)
+        comment_body += re.sub(OPERATORS_RE, r'**\1**', comment.body)
         new_comment = new_pr.create_comment(body=comment_body)
         for reaction in comment.get_reactions():
             new_comment.create_reaction(reaction.content)
@@ -176,6 +174,7 @@ def get_all_issues(repo):
 
     return issues
 
+
 def get_contributors(repo):
     """ Get all contributors """
     contributors = repo.get_stats_contributors()
@@ -183,6 +182,7 @@ def get_contributors(repo):
     authors = [c.author.login for c in contributors]
 
     return authors
+
 
 def get_everything(repo):
     """ Gets everything """
@@ -221,7 +221,7 @@ parser.add_argument("--end", help="migrate until this issue number",
                     type=int)
 parser.add_argument("--verbose", help="increase output verbosity",
                     action="store_true")
-parser.add_argument("--initial", help="migrate labels and milestones (only execute once)",
+parser.add_argument("--initial", help="migrate labels and milestones (execute once)",
                     action="store_true")
 parser.add_argument("--repo", help="destination repo to use. MUST exist beforehand!",
                     type=str)
