@@ -9,6 +9,7 @@ verify_ssl = true
 pygithub = "*"
 jsonpickle = "*"
 six = "*"
+pause = "*"
 
 [requires]
 python_version = "3.7"

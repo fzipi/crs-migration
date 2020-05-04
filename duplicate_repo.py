@@ -4,12 +4,13 @@
 Script for migrating owasp-modsecurity-crs repo
 """
 from github import Github
-from github.GithubException import UnknownObjectException, GithubException
+from github.GithubException import UnknownObjectException, GithubException, RateLimitExceededException
 import os
 import sys
 import re
 import argparse
-
+from datetime import datetime
+import pause
 
 def copy_milestones(source, destination):
     """
@@ -61,6 +62,24 @@ def copy_labels(source, destination):
                 print("Label {label} already exists in repo".format(label=label.name))
 
 
+def create_dummy_issue(number, destination):
+    """
+    Sometimes there is no original issue: maybe it didn't existed, or it was private.
+    We just create a dummy issue to track this.
+    """
+
+
+    body = """_There was no issue originally using this number. We inserted this one to preserve numbering at migration."""
+
+    issue_args = {"title": "Placeholder issue", "body": body}
+
+    new_issue = destination.create_issue(**issue_args)
+
+    new_issue.edit(state="closed")
+
+    print(">> Created DUMMY issue #{n}".format(n=new_issue.number))
+
+
 def migrate_issue(orig_issue, destination, dest_milestones, dest_labels):
     """
     Migrates issue to destination depo.
@@ -97,6 +116,11 @@ def migrate_issue(orig_issue, destination, dest_milestones, dest_labels):
 
     print(">> Migrating issue #{n} as new #{new_n}".format(
         n=orig_issue.number, new_n=new_issue.number))
+
+    if new_issue.number != orig_issue.number:
+        print("#### Ups, we deviated from the planner number sequence")
+        sys.exit()
+
 
     # now add the original body
     for comment in orig_issue.get_comments():
@@ -146,6 +170,10 @@ def migrate_pr(orig_pull, destination, milestones, labels):
 
     print(">> Migrating pullreq #{n} as new issue #{new_n}".format(
         n=orig_pull.number, new_n=new_pr.number))
+
+    if new_pr.number != orig_pull.number:
+        print("#### Ups, we deviated from the planner number sequence")
+        sys.exit()
 
     # now add the original review comments
     for comment in orig_pull.get_comments():
@@ -219,6 +247,8 @@ parser.add_argument("--start", help="start migrating from given issue number",
                     type=int)
 parser.add_argument("--end", help="migrate until this issue number",
                     type=int)
+parser.add_argument("--everything", help="migrate everything",
+                    action="store_true")
 parser.add_argument("--verbose", help="increase output verbosity",
                     action="store_true")
 parser.add_argument("--initial", help="migrate labels and milestones (execute once)",
@@ -256,11 +286,15 @@ labels = dest.get_labels()
 
 OPERATORS_RE = r'@(?!:beginsWith|contains|containsWord|detectSQLi|detectXSS|endsWith|fuzzyHash|eq|ge|geoLookup|gsbLookup|gt|inspectFile|ipMatch|ipMatchF|ipMatchFromFile|ipmatchfromfile|le|lt|noMatch|pmf|pmFromFile|pm|rbl|rsub|rx|streq|strmatch|unconditionalMatch|validateByteRange|validateDTD|validateHash|validateSchema|validateUrlEncoding|validateUtf8Encoding|verifyCC|verifyCPF|verifySSN|within|rx)([a-zA-Z0-9]+)'
 
+date_resettime=datetime.fromtimestamp(g.rate_limiting_resettime)
+
 for n in range(args.start, args.end+1):
+    """ Attention: there is no issue 1062! """
     limit = g.get_rate_limit()
     if limit.core.remaining < 50:
-        print(f"Stopping the migration here, please start from {n} next time")
-        sys.exit()
+        date_resettime=datetime.fromtimestamp(g.rate_limiting_resettime)
+        print("Pausing the migration, until {t}, will start from {n} next time".format(t=date_resettime, n=n))
+        pause.until(date_resettime)
 
     print("+ Migrating #{number}".format(number=n))
     try:
@@ -270,5 +304,13 @@ for n in range(args.start, args.end+1):
         try:
             issue = orig.get_issue(number=n)
             migrate_issue(issue, dest, milestones, labels)
+        except GithubException as ghe:
+            if ghe.status == 404:
+                """ If there is no original issue, we should create a dummy issue """
+                create_dummy_issue(n, dest)
         except Exception as e:
             print(e)
+    except RateLimitExceededException:
+        date_resettime=datetime.fromtimestamp(g.rate_limiting_resettime)
+        print("Pausing the migration, until {t}, will start from {n} next time".format(t=date_resettime, n=n))
+        pause.until(date_resettime)
